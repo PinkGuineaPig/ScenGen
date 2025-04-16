@@ -1,0 +1,10 @@
+flask
+dash
+torch
+scikit-learn
+pandas
+plotly
+minisom
+redis
+requests
+pytest

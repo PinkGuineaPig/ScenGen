@@ -1,0 +1,4 @@
+[project]
+name = "ScenGen"
+version = "0.1.0"
+description = "Scenario generation and latent space analysis app."
