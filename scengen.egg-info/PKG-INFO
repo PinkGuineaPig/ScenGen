@@ -1,0 +1,18 @@
+Metadata-Version: 2.4
+Name: scengen
+Version: 0.1.0
+Summary: Scenario generation and latent space analysis app.
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: flask
+Requires-Dist: dash
+Requires-Dist: flask_sqlalchemy
+Requires-Dist: torch
+Requires-Dist: scikit-learn
+Requires-Dist: pandas
+Requires-Dist: plotly
+Requires-Dist: minisom
+Requires-Dist: redis
+Requires-Dist: requests
+
+# ScenGen 

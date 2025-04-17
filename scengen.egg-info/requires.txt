@@ -1,5 +1,6 @@
 flask
 dash
+flask_sqlalchemy
 torch
 scikit-learn
 pandas
@@ -7,5 +8,3 @@ plotly
 minisom
 redis
 requests
-pytest
-flask_sqlalchemy

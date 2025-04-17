@@ -1,4 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
 [project]
-name = "ScenGen"
+name = "scengen"
 version = "0.1.0"
 description = "Scenario generation and latent space analysis app."
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+  "flask",
+  "dash",
+  "flask_sqlalchemy",
+  "torch",
+  "scikit-learn",
+  "pandas",
+  "plotly",
+  "minisom",
+  "redis",
+  "requests",
+]
+
+[tool.setuptools.packages.find]
+# Only include your Flask app code under Backend/app
+include = [
+  "Backend.app",
+  "Backend.app.*"
+]
