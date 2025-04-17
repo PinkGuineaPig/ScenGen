@@ -19,11 +19,20 @@ dependencies = [
   "minisom",
   "redis",
   "requests",
+  "python-dotenv",
+  "psycopg2-binary"
 ]
 
 [tool.setuptools.packages.find]
-# Only include your Flask app code under Backend/app
 include = [
-  "Backend.app",
-  "Backend.app.*"
+  "Backend",
+  "Backend.*",
+  "Shared",
+  "Shared.*",
+  "scripts",
+  "scripts.*"
 ]
+
+
+[project.scripts]
+fetch-fx = "scripts.fetch_fx:main"

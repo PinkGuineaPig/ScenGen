@@ -186,19 +186,28 @@ class ExchangeRate(db.Model):
     id                = db.Column(db.Integer, primary_key=True)
     base_currency_id  = db.Column(db.Integer, db.ForeignKey('currency.id'), nullable=False)
     quote_currency_id = db.Column(db.Integer, db.ForeignKey('currency.id'), nullable=False)
-    rate              = db.Column(db.Numeric(18,8), nullable=False)
+    open              = db.Column(db.Numeric(18,8), nullable=False)
+    high              = db.Column(db.Numeric(18,8), nullable=False)
+    low               = db.Column(db.Numeric(18,8), nullable=False)
+    close             = db.Column(db.Numeric(18,8), nullable=False)
     timestamp         = db.Column(db.DateTime, nullable=False)
 
     __table_args__ = (
-        db.UniqueConstraint('base_currency_id', 'quote_currency_id', 'timestamp', name='uq_fx_pair_time'),
+        db.UniqueConstraint(
+            'base_currency_id',
+            'quote_currency_id',
+            'timestamp',
+            name='uq_fx_pair_time'
+        ),
     )
 
-    # Relationships back to the Currency lookup
     base_currency  = db.relationship('Currency', foreign_keys=[base_currency_id])
     quote_currency = db.relationship('Currency', foreign_keys=[quote_currency_id])
 
     def __repr__(self):
-        bc = self.base_currency.code
-        qc = self.quote_currency.code
-        ts = self.timestamp.isoformat()
-        return f'<ExchangeRate {bc}->{qc} @ {ts} = {self.rate}>'
+        return (
+            f'<ExchangeRate {self.base_currency.code}->{self.quote_currency.code} '
+            f'@ {self.timestamp.date()} O={self.open} H={self.high} '
+            f'L={self.low} C={self.close}>'
+        )
+
