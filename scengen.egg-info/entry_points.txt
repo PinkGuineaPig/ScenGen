@@ -1,2 +1,3 @@
 [console_scripts]
 fetch-fx = scripts.fetch_fx:main
+start-backend = Backend.app.run:main

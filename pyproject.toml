@@ -25,14 +25,12 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 include = [
-  "Backend",
-  "Backend.*",
-  "Shared",
-  "Shared.*",
-  "scripts",
-  "scripts.*"
+  "Pytorch", "Pytorch.*",
+  "Backend", "Backend.*",
+  "Shared", "Shared.*",
+  "scripts", "scripts.*",
 ]
 
-
 [project.scripts]
-fetch-fx = "scripts.fetch_fx:main"
+fetch-fx      = "scripts.fetch_fx:main"
+start-backend = "Backend.app.run:main"

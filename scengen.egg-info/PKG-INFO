@@ -135,3 +135,75 @@ python -m Backend.app.run
 Run automated tests
 
 pytest
+
+
+
+
+
+
+## Program Flow
+
+This project uses a single Flask factory (`create_app()`) and a `.env.<env>` loader to switch between development, testing, and production. Below is the high‑level flow in each environment:
+
+### Common Startup Steps
+
+1. **Entry Point**  
+   - **Dev**: `flask run` (with `FLASK_APP=Backend.app:create_app`)  
+   - **Prod**: your WSGI server (e.g. Gunicorn) calls `Backend.app:create_app`  
+   - **Test**: pytest’s `conftest.py` imports and calls `create_app()`
+
+2. **Load Environment**  
+   ```python
+   env = os.getenv("FLASK_ENV", "development")
+   load_dotenv(f".env.{env}", override=True)
+   ```
+   → picks `.env.development`, `.env.test`, or `.env.production`
+
+3. **Configure Database**  
+   ```python
+   app.config["SQLALCHEMY_DATABASE_URI"] = get_database_uri()
+   ```
+   → reads `SCENGEN_DEV_DB_URL`, `SCENGEN_TEST_DB_URL`, or `SCENGEN_DB_URL`
+
+4. **Create App & Register Blueprints**  
+   - `db.init_app(app)`  
+   - `app.register_blueprint(model_configs_bp)`  
+   - `app.register_blueprint(model_runs_bp)`
+
+### Development Mode
+
+```bash
+export FLASK_ENV=development   # or leave unset
+flask run
+```
+
+- Loads `.env.development`  
+- Connects to your dev database  
+- Serves your API with debug off/on per config
+
+### Testing Mode
+
+```bash
+pytest
+```
+
+- In `conftest.py`: `os.environ.setdefault("FLASK_ENV", "test")`  
+- Loads `.env.test`  
+- Spins up test DB, does `db.create_all()` once, uses transactions + rollbacks per test  
+- Exercises the same Flask routes via the `client` and `session` fixtures
+
+### Production Mode
+
+```bash
+export FLASK_ENV=production
+gunicorn Backend.app:create_app
+```
+
+- Loads `.env.production`  
+- Connects to your production database  
+- Serves your API under Gunicorn (or your chosen WSGI server)
+
+
+### Start redis server:
+cd C:\Users\Kevin\Redis
+.\redis-server.exe
