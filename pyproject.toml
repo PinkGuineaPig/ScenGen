@@ -24,13 +24,17 @@ dependencies = [
 ]
 
 [tool.setuptools.packages.find]
+# Include all top-level code and subpackages, including Frontend
 include = [
   "Pytorch", "Pytorch.*",
   "Backend", "Backend.*",
   "Shared", "Shared.*",
   "scripts", "scripts.*",
+  "Frontend", "Frontend.*"
 ]
 
 [project.scripts]
-fetch-fx      = "scripts.fetch_fx:main"
-start-backend = "Backend.app.run:main"
+# Utility entry points (prefixed with project name)
+scengen-fetch-fx        = "scripts.fetch_fx:main"
+scengen-start-backend   = "Backend.app.run:main"
+scengen-start-frontend  = "Frontend.dash_app:main"

@@ -110,8 +110,8 @@ def train_vae_for_config(app, currency_pairs, hyperparams):
                 avg_loss = train_loss / len(train_loader)
                 avg_kl = train_kl / len(train_loader)
                 session.add_all([
-                    ModelLossHistory(model_run=run, epoch=epoch, loss_type='train', value=avg_loss),
-                    ModelLossHistory(model_run=run, epoch=epoch, loss_type='train_kl', value=avg_kl)
+                    ModelLossHistory(run=run, epoch=epoch, loss_type='train', value=avg_loss),
+                    ModelLossHistory(run=run, epoch=epoch, loss_type='train_kl', value=avg_kl)
                 ])
                 print(f'Epoch {epoch}/{epochs} | Loss={avg_loss:.4f} | KL={avg_kl:.4f}')
 
@@ -125,8 +125,8 @@ def train_vae_for_config(app, currency_pairs, hyperparams):
                             val_loss += nn.MSELoss()(recon, data).item()
                             val_kl += (-0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp()) / data.size(0)).item()
                     session.add_all([
-                        ModelLossHistory(model_run=run, epoch=epoch, loss_type='test', value=val_loss / len(test_loader)),
-                        ModelLossHistory(model_run=run, epoch=epoch, loss_type='test_kl', value=val_kl / len(test_loader))
+                        ModelLossHistory(run=run, epoch=epoch, loss_type='test', value=val_loss / len(test_loader)),
+                        ModelLossHistory(run=run, epoch=epoch, loss_type='test_kl', value=val_kl / len(test_loader))
                     ])
                     print(f'Test @ {epoch} | Loss={val_loss/len(test_loader):.4f} | KL={val_kl/len(test_loader):.4f}')
 

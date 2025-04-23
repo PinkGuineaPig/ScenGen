@@ -90,3 +90,5 @@ def trigger_training(config_id):
         args=(app, cfg.currency_pairs, cfg.parameters)
     ).start()
     return jsonify({'status': 'training started'}), 202
+
+

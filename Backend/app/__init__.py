@@ -35,10 +35,13 @@ def create_app(config_overrides=None):
     from Backend.app.routes.pca_configs import pca_bp
     api_bp.register_blueprint(pca_bp)
 
+    from Backend.app.routes.all_configs import configs_bp
+    api_bp.register_blueprint(configs_bp)
     # (Later) you can add model_runs, feedback, etc.
     # from Backend.app.routes.model_runs import model_runs_bp
     # api_bp.register_blueprint(model_runs_bp)
-
+    from Backend.app.routes.currency_pairs import currency_bp 
+    api_bp.register_blueprint(currency_bp)
     # Finally, register the single /api blueprint on the app
     app.register_blueprint(api_bp)
 

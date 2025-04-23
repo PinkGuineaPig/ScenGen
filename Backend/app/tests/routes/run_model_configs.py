@@ -32,14 +32,14 @@ print('GET', base, '->', resp.status_code, resp.get_json())
 # 6. CREATE a new config
 new_cfg = {
     'model_type': 'LSTMVAE',
-    'parameters': {'seq_len': 6, 'hidden_size': 64, 'latent_dim': 6},
+    'parameters': {'seq_len': 4, 'hidden_size': 79, 'latent_dim': 3},
     'currency_pairs': ['EUR/USD', 'GBP/JPY']
 }
 resp = client.post(base, json=new_cfg)
 print('POST', base, '->', resp.status_code, resp.get_json())
 if resp.status_code != 201:
     sys.exit(1)
-cfg_id = resp.get_json()['id']
+cfg_id = resp.get_json()['id']##
 
 # 7. GET the created config
 cfg_url = f"{base}/{cfg_id}"

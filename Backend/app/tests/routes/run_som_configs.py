@@ -56,3 +56,10 @@ print("DELETE", cfg_url, "->", resp.status_code)
 # 10. LIST to confirm deletion
 resp = client.get(base)
 print("GET", base, "->", resp.status_code, resp.get_json())
+
+
+
+
+base = f"/api/configs/"
+resp = client.get(base)
+print("GET", base, "->", resp.status_code, resp.get_json())

@@ -1,3 +1,4 @@
 [console_scripts]
-fetch-fx = scripts.fetch_fx:main
-start-backend = Backend.app.run:main
+scengen-fetch-fx = scripts.fetch_fx:main
+scengen-start-backend = Backend.app.run:main
+scengen-start-frontend = Frontend.dash_app:main
