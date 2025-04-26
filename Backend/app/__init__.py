@@ -42,6 +42,13 @@ def create_app(config_overrides=None):
     # api_bp.register_blueprint(model_runs_bp)
     from Backend.app.routes.currency_pairs import currency_bp 
     api_bp.register_blueprint(currency_bp)
+
+    from Backend.app.routes.model_runs import model_runs_bp
+    api_bp.register_blueprint(model_runs_bp)
+
+    from Backend.app.routes.som_projections import som_projections_bp
+    api_bp.register_blueprint(som_projections_bp)
+
     # Finally, register the single /api blueprint on the app
     app.register_blueprint(api_bp)
 

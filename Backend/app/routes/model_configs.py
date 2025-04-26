@@ -1,9 +1,9 @@
-# Backend/app/routes/model_configs.py
-
 from flask import Blueprint, jsonify, request, current_app, abort
-from Backend.app import db
-from Backend.app.models.run_models import ModelRunConfig
 from threading import Thread
+import requests
+
+from Backend.app import db
+from Backend.app.models.run_models import ModelRunConfig, ModelRun
 from Pytorch.trainers.vae_trainer import train_vae_for_config
 
 # Blueprint mounted under /api by app factory
@@ -20,7 +20,8 @@ def list_model_configs():
 @model_configs_bp.route('/<int:config_id>', methods=['GET'])
 def get_model_config(config_id):
     """
-    Fetch a single ModelRunConfig by ID. Query param `relations=true` includes runs and loss history.
+    Fetch a single ModelRunConfig by ID.
+    Query param `relations=true` includes run, pca_configs, som_configs.
     """
     cfg = ModelRunConfig.query.get_or_404(config_id)
     include = request.args.get('relations', 'false').lower() == 'true'
@@ -29,17 +30,13 @@ def get_model_config(config_id):
 @model_configs_bp.route('', methods=['POST'])
 def create_model_config():
     """
-    Create a new ModelRunConfig. Expects JSON with keys:
-      - model_type (str)
-      - parameters (dict)
-      - currency_pairs (list of str)
+    Create a new ModelRunConfig.
+    Expects JSON with keys: model_type (str), parameters (dict), currency_pairs (list of str)
     """
     data = request.get_json() or {}
-    required = ['model_type', 'parameters', 'currency_pairs']
-    for field in required:
+    for field in ('model_type', 'parameters', 'currency_pairs'):
         if field not in data:
             abort(400, f"Missing required field: {field}")
-
     cfg = ModelRunConfig(
         model_type=data['model_type'],
         parameters=data['parameters'],
@@ -69,7 +66,7 @@ def update_model_config(config_id):
 @model_configs_bp.route('/<int:config_id>', methods=['DELETE'])
 def delete_model_config(config_id):
     """
-    Delete a ModelRunConfig and all associated runs and loss history.
+    Delete a ModelRunConfig and all associated run and loss history.
     """
     cfg = ModelRunConfig.query.get_or_404(config_id)
     db.session.delete(cfg)
@@ -80,15 +77,29 @@ def delete_model_config(config_id):
 def trigger_training(config_id):
     """
     Trigger VAE training for the given ModelRunConfig (async).
-    Uses the stored currency_pairs and parameters on the config.
     """
     cfg = ModelRunConfig.query.get_or_404(config_id)
     app = current_app._get_current_object()
-    # Start training in background thread
     Thread(
         target=train_vae_for_config,
-        args=(app, cfg.currency_pairs, cfg.parameters)
+        args=(app, config_id)
     ).start()
     return jsonify({'status': 'training started'}), 202
 
-
+@model_configs_bp.route('/<int:config_id>/runs', methods=['GET'])
+def list_runs_for_config(config_id):
+    """
+    Return all ModelRun entries for the given ModelRunConfig, ordered by version.
+    """
+    # Validate existence
+    ModelRunConfig.query.get_or_404(config_id, description=f"Config {config_id} not found")
+    runs = (
+        ModelRun.query
+        .filter_by(config_id=config_id)
+        .order_by(ModelRun.version)
+        .all()
+    )
+    payload = [
+        r.to_frontend_dict() for r in runs
+    ]
+    return jsonify(payload), 200

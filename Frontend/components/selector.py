@@ -1,7 +1,5 @@
-# Frontend/components/selector.py
-
-import requests
 from dash import html, dcc, callback, Input, Output, State, dash_table
+
 
 def ConfigTableSection():
     return html.Div([
@@ -21,7 +19,8 @@ def ConfigTableSection():
                 for col in [
                     'id', 'model_type', 'learning_rate', 'latent_dim',
                     'base_kl_weight', 'batch_size', 'seq_len', 'epochs',
-                    'hidden_size', 'currency_pairs', 'created_at',
+                    'hidden_size', 'currency_pairs', 'bidirectional',  
+                    'created_at',
                     'pca_n_components', 'pca_whiten', 'pca_solver',
                     'som_dims', 'som_iterations', 'som_sigma', 'som_learning_rate'
                 ]
@@ -41,26 +40,14 @@ def ConfigTableSection():
 
 
 @callback(
-    Output('configs-table', 'data'),
-    Input('load-configs-interval', 'n_intervals')
-)
-def load_table_data(n_intervals):
-    try:
-        resp = requests.get('http://localhost:5000/api/configs/')
-        resp.raise_for_status()
-        return resp.json()
-    except Exception as e:
-        print('Error loading configs:', e)
-        return []
-
-
-@callback(
     Output('selected-config-id', 'children'),
     Input('configs-table', 'selected_rows'),
     State('configs-table', 'data')
 )
 def display_selected(selected_rows, table_data):
-    if selected_rows and table_data:
-        row = table_data[selected_rows[0]]
-        return f"Selected Config ID: {row['id']}"
-    return "No config selected."
+    if not table_data:
+        return "No configurations found."
+    if not selected_rows:
+        return "No config selected."
+    row = table_data[selected_rows[0]]
+    return f"Selected Config ID: {row['id']}"

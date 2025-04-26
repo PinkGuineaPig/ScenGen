@@ -1,10 +1,6 @@
-# Backend/app/models/run_models.py
-# ---------------------------
-# Unified model definitions for model runs, configurations, and loss history
-# ---------------------------
-
-from datetime import datetime
-from sqlalchemy.orm import backref, joinedload
+from datetime import datetime, timezone
+from sqlalchemy import Column, Integer, String, DateTime, JSON, ForeignKey, Float, ARRAY
+from sqlalchemy.orm import relationship, joinedload
 from Backend.app import db
 
 # ---------------------------
@@ -13,76 +9,56 @@ from Backend.app import db
 class ModelRunConfig(db.Model):
     __tablename__ = 'model_run_config'
 
-    id          = db.Column(db.Integer, primary_key=True, nullable=False)
-    created_at  = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    model_type  = db.Column(db.String(50), nullable=False)
-    parameters  = db.Column(db.JSON,    nullable=False)
-    currency_pairs = db.Column(db.ARRAY(db.String(10)), nullable=False, default=list)
+    id             = Column(Integer, primary_key=True, nullable=False)
+    created_at     = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    model_type     = Column(String(50), nullable=False)
+    parameters     = Column(JSON,    nullable=False)
+    currency_pairs = Column(ARRAY(String(10)), nullable=False, default=list)
 
-    # bring in your projection configs
-    pca_configs = db.relationship(
+    # Relationships
+    pca_configs = relationship(
         'PCAProjectionConfig',
         back_populates='config',
         lazy='select',
         cascade='all, delete-orphan'
     )
-    som_configs = db.relationship(
+    som_configs = relationship(
         'SOMProjectionConfig',
         back_populates='config',
         lazy='select',
         cascade='all, delete-orphan'
     )
-    runs = db.relationship(
+    run = relationship(
         'ModelRun',
+        uselist=False,
         back_populates='config',
         cascade='all, delete-orphan'
-    )   
-
-
-
-    # Backrefs provided by related models:
-    #   .runs         -> list of ModelRun instances
-    #   .loss_history -> list of ModelLossHistory instances
+    )
 
     def __repr__(self):
         return (
             f'<ModelRunConfig id={self.id} '
-            f'type={self.model_type} pairs={self.currency_pairs}>'
+            f'type={self.model_type}>'
         )
 
     def to_dict(self, include_relations=False):
         data = {
-            'id':              self.id,
-            'model_type':      self.model_type,
-            'parameters':      self.parameters,
-            'currency_pairs':  self.currency_pairs,
-            'created_at':      self.created_at.isoformat(),
+            'id':             self.id,
+            'model_type':     self.model_type,
+            'parameters':     self.parameters,
+            'currency_pairs': self.currency_pairs,
+            'created_at':     self.created_at.isoformat(),
         }
         if include_relations:
-            data['runs']        = [run.to_frontend_dict() for run in self.runs]
+            data['run']         = self.run.to_frontend_dict() if self.run else None
             data['pca_configs'] = [cfg.to_dict() for cfg in self.pca_configs]
             data['som_configs'] = [cfg.to_dict() for cfg in self.som_configs]
         return data
 
-    @classmethod
-    def get_all_model_configs(cls, session):
-        """
-        Fetch all configurations without loading relations.
-        Use `config.runs` or `config.loss_history` to access linked data via backrefs.
-        """
-        return session.query(cls).all()
-    
-    # ----------------------------------------------------------------
-    # 1) New instance method: emit one “flat” dict per sub-config pair
-    # ----------------------------------------------------------------
     def to_flat_dicts(self):
         rows = []
-        # if no pca/som, still emit at least one row
         pcas = self.pca_configs or [None]
         soms = self.som_configs or [None]
-
-        # flatten your parameters JSON into columns
-        # (if you know the exact keys, you can explicitly pull them out instead)
         flat_params = self.parameters.copy()
 
         for pca in pcas:
@@ -90,7 +66,7 @@ class ModelRunConfig(db.Model):
                 row = {
                     'id':                self.id,
                     'model_type':        self.model_type,
-                    **flat_params,       # each JSON key → its own column
+                    **flat_params,
                     'currency_pairs':    ','.join(self.currency_pairs),
                     'created_at':        self.created_at.isoformat(),
                     'pca_n_components':  getattr(pca, 'n_components', None),
@@ -102,19 +78,16 @@ class ModelRunConfig(db.Model):
                     'som_learning_rate': (som.additional_params or {}).get('learning_rate') if som else None,
                 }
                 rows.append(row)
-
         return rows
 
-    # ----------------------------------------------------------------------------
-    # 2) New classmethod: eager-load everything and return one big flat list of rows
-    # ----------------------------------------------------------------------------
     @classmethod
     def all_flat_dicts(cls, session):
         configs = (
             session.query(cls)
                    .options(
-                      joinedload(cls.pca_configs),
-                      joinedload(cls.som_configs),
+                       joinedload(cls.pca_configs),
+                       joinedload(cls.som_configs),
+                       joinedload(cls.run)
                    )
                    .all()
         )
@@ -124,74 +97,54 @@ class ModelRunConfig(db.Model):
         return flat
 
 # ---------------------------
-# ModelRun: Stores the trained model created by the user
+# ModelRun: Stores the trained model created by the user (one-to-one with config)
 # ---------------------------
 class ModelRun(db.Model):
     __tablename__ = 'model_run'
 
-    id          = db.Column(db.Integer, primary_key=True, nullable=False)
-    created_at  = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    config_id = db.Column(
-        db.Integer,
-        db.ForeignKey('model_run_config.id', ondelete='CASCADE'),
-        nullable=False,
-        index=True
+    id          = Column(Integer, primary_key=True, nullable=False)
+    created_at  = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    config_id   = Column(
+        Integer,
+        ForeignKey('model_run_config.id', ondelete='CASCADE'),
+        unique=True,
+        nullable=False
     )
+    version     = Column(Integer, nullable=False)
+    model_blob  = Column(db.LargeBinary, nullable=False)
 
-    config = db.relationship(
+    config = relationship(
         'ModelRunConfig',
-        back_populates='runs'
+        back_populates='run'
     )
-
-    loss_history = db.relationship(
+    loss_history = relationship(
         'ModelLossHistory',
         back_populates='run',
         cascade='all, delete-orphan'
     )
-
-    latent_points = db.relationship(
+    latent_points = relationship(
         'LatentPoint',
         back_populates='run',
         cascade='all, delete-orphan'
     )
 
-    version     = db.Column(db.Integer, nullable=False)
-    model_blob  = db.Column(db.LargeBinary, nullable=False)
-
     def __repr__(self):
         return f'<ModelRun id={self.id} v={self.version}>'
 
     def to_dict(self):
-        """
-        Full serialization including all fields (for internal use).
-        """
         return {
             'id':         self.id,
-            'config_id':  self.config_id,
             'version':    self.version,
             'created_at': self.created_at.isoformat(),
             'model_blob': self.model_blob,
         }
 
     def to_frontend_dict(self):
-        """
-        Lean serialization for client use—omits heavy/binary content.
-        """
         return {
             'id':         self.id,
             'version':    self.version,
             'created_at': self.created_at.isoformat(),
         }
-
-    @classmethod
-    def get_all_models(cls, session, eager=False):
-        """
-        Fetch all model runs. Set `eager=True` to load configs in one step.
-        """
-        query = session.query(cls)
-        if eager:
-            query = query.options(joinedload(cls.config))
-        return query.all()
 
 # ---------------------------
 # ModelLossHistory: Records loss/error for each epoch of a model run
@@ -199,29 +152,21 @@ class ModelRun(db.Model):
 class ModelLossHistory(db.Model):
     __tablename__ = 'model_loss_history'
 
-    id           = db.Column(db.Integer, primary_key=True, nullable=False)
-    model_run_id = db.Column(
-        db.Integer,
-        db.ForeignKey('model_run.id'),
-        nullable=False,
-        index=True
-    )
-    run = db.relationship(
+    id           = Column(Integer, primary_key=True, nullable=False)
+    model_run_id = Column(Integer, ForeignKey('model_run.id', ondelete='CASCADE'), nullable=False)
+    epoch        = Column(Integer, nullable=False)
+    loss_type    = Column(String(50), nullable=False)
+    value        = Column(Float, nullable=False)
+
+    run = relationship(
         'ModelRun',
         back_populates='loss_history'
     )
-     
-    epoch        = db.Column(db.Integer, nullable=False)
-    loss_type    = db.Column(db.String(50), nullable=False)
-    value        = db.Column(db.Float, nullable=False)
 
     def __repr__(self):
-        return f'<LossHistory run={self.model_run_id} epoch={self.epoch} type={self.loss_type}>'
+        return f'<LossHistory run={self.model_run_id} epoch={self.epoch}>'
 
     def to_dict(self):
-        """
-        Serialization for loss entries.
-        """
         return {
             'id':            self.id,
             'model_run_id':  self.model_run_id,

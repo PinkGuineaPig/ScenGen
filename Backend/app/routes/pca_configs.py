@@ -1,9 +1,12 @@
 # Backend/app/api/pca_configs.py
 
-from flask import Blueprint, request, jsonify, abort
+from flask import Blueprint, request, jsonify, abort, current_app
 from Backend.app import db
 from Backend.app.models.run_models import ModelRun
 from Backend.app.models.latent_models import PCAProjectionConfig
+from Pytorch.trainers.pca_trainer import run_pca_for_run
+
+from threading import Thread
 
 pca_bp = Blueprint(
     'pca_configs',
@@ -134,3 +137,38 @@ def delete_config(run_id, cfg_id):
     db.session.delete(cfg)
     db.session.commit()
     return '', 204
+
+
+@pca_bp.route('/<int:cfg_id>/train', methods=['POST'])
+def trigger_pca_training(run_id, cfg_id):
+    """
+    Trigger PCA training asynchronously for the existing PCAProjectionConfig.
+    """
+    from Pytorch.trainers.pca_trainer import run_pca_for_run
+
+    run = ModelRun.query.filter_by(id=run_id).first_or_404(description="Run not found")
+    cfg = PCAProjectionConfig.query.filter_by(config_id=run.config_id, id=cfg_id).first_or_404(description="Config not found")
+
+    app = current_app._get_current_object()
+
+    Thread(
+        target=_train_pca_worker,
+        args=(app, run_id, cfg),
+        daemon=True
+    ).start()
+
+    return jsonify({'status': 'PCA training started'}), 202
+
+def _train_pca_worker(app, run_id, cfg):
+    with app.app_context():
+        hyperparams = {
+            'n_components': cfg.n_components,
+            'additional_params': cfg.additional_params or {}
+        }
+
+        # Fix wrong keys if necessary
+        additional = hyperparams['additional_params']
+        if 'solver' in additional:
+            additional['svd_solver'] = additional.pop('solver')  # rename
+
+        run_pca_for_run(db.session, run_id, hyperparams)
