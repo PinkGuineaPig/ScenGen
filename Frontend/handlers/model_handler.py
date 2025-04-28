@@ -95,7 +95,9 @@ class ModelConfigHandler(BaseConfigHandler):
 
             # refresh table
             try:
-                new_table = requests.get(f"{API_BASE}/configs").json()
+                resp = requests.get(f"{API_BASE}/model-configs")
+                resp.raise_for_status()
+                new_table = resp.json()
             except Exception as e:
                 print("❌ Refresh table failed:", e)
                 new_table = []

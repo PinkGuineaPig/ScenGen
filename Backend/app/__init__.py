@@ -49,6 +49,10 @@ def create_app(config_overrides=None):
     from Backend.app.routes.som_projections import som_projections_bp
     api_bp.register_blueprint(som_projections_bp)
 
+    from Backend.app.routes.pca_projections import pca_projections_bp
+    api_bp.register_blueprint(pca_projections_bp)
+
+
     # Finally, register the single /api blueprint on the app
     app.register_blueprint(api_bp)
 

@@ -11,10 +11,11 @@ class LatentPoint(db.Model):
     start_date    = db.Column(db.Date, nullable=False)
     lag           = db.Column(db.Integer, nullable=False)
     latent_vector = db.Column(db.ARRAY(db.Float), nullable=True)
-    model_run_id = db.Column(
+    model_run_id  = db.Column(
         db.Integer,
         db.ForeignKey('model_run.id', ondelete='CASCADE'),
-        nullable=False, index=True
+        nullable=False,
+        index=True
     )   
 
     __table_args__ = (
@@ -44,21 +45,17 @@ class LatentPoint(db.Model):
         cascade='all, delete-orphan'
     )
 
-  
     def get_pca_vector(self, config_id=None):
         projs = self.pca_projections
         if config_id is not None:
             projs = [p for p in projs if p.config_id == config_id]
-        # sort by dim and extract values
         return [p.value for p in sorted(projs, key=lambda p: p.dim)]
 
     def get_som_coordinates(self, session, config_id=None):
-        #from .latent_models import SOMProjection
         query = session.query(SOMProjection).filter_by(latent_point_id=self.id)
         if config_id is not None:
             query = query.filter_by(config_id=config_id)
         return query.first()
-
 
 # ---------------------------
 # LatentInput: Links each latent point back to its original data source.
@@ -67,7 +64,7 @@ class LatentInput(db.Model):
     __tablename__ = 'latent_input'
 
     id              = db.Column(db.Integer, primary_key=True)
-    latent_point_id = db.Column(db.Integer, db.ForeignKey('latent_point.id'), nullable=False, index=True)
+    latent_point_id = db.Column(db.Integer, db.ForeignKey('latent_point.id', ondelete='CASCADE'), nullable=False, index=True)
     currency_pair   = db.Column(db.String(10), nullable=False)
     date            = db.Column(db.Date, nullable=False)
     source_table    = db.Column(db.String(80), nullable=False)
@@ -77,27 +74,26 @@ class LatentInput(db.Model):
     def __repr__(self):
         return f"<LatentInput point={self.latent_point_id} pair={self.currency_pair} date={self.date}>"
 
-
 # ---------------------------
 # SOMProjectionConfig: Stores configuration details for SOM projections.
 # ---------------------------
 class SOMProjectionConfig(db.Model):
     __tablename__ = 'som_projection_config'
 
-    id            = db.Column(db.Integer, primary_key=True)
-    model_run_id  = db.Column(db.Integer, db.ForeignKey('model_run.id'), nullable=False, index=True)
-    x_dim         = db.Column(db.Integer, nullable=False)
-    y_dim         = db.Column(db.Integer, nullable=False)
-    iterations    = db.Column(db.Integer, nullable=False)
-    additional_params = db.Column(db.JSON, nullable=True)
+    id              = db.Column(db.Integer, primary_key=True)
+    model_config_id = db.Column(
+        db.Integer,
+        db.ForeignKey('model_run_config.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True
+    )
+    x_dim           = db.Column(db.Integer, nullable=False)
+    y_dim           = db.Column(db.Integer, nullable=False)
+    iterations      = db.Column(db.Integer, nullable=False)
+    additional_params = db.Column(db.JSON, nullable=True,default=dict)
+    created_at      = db.Column(db.DateTime, server_default=db.func.now(), nullable=False)
 
-    config_id = db.Column(db.Integer,
-                          db.ForeignKey('model_run_config.id'),
-                          nullable=False,
-                          index=True)
-    
-    
-    config    = db.relationship(
+    config = db.relationship(
         'ModelRunConfig',
         back_populates='som_configs'
     )
@@ -111,10 +107,20 @@ class SOMProjectionConfig(db.Model):
 
     def __repr__(self):
         return (
-            f'<SOMConfig run={self.model_run_id} '
+            f'<SOMConfig model_config={self.model_config_id} '
             f'{self.x_dim}x{self.y_dim} iters={self.iterations}>'
         )
 
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'model_config_id': self.model_config_id,
+            'x_dim': self.x_dim,
+            'y_dim': self.y_dim,
+            'iterations': self.iterations,
+            'additional_params': self.additional_params,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
 
 # ---------------------------
 # SOMProjection: Maps latent points onto a 2D SOM grid cell.
@@ -124,8 +130,8 @@ class SOMProjection(db.Model):
 
     id              = db.Column(db.Integer, primary_key=True)
     created_at      = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    latent_point_id = db.Column(db.Integer, db.ForeignKey('latent_point.id'), nullable=False, index=True)
-    config_id       = db.Column(db.Integer, db.ForeignKey('som_projection_config.id'), nullable=False, index=True)
+    latent_point_id = db.Column(db.Integer, db.ForeignKey('latent_point.id', ondelete='CASCADE'), nullable=False, index=True)
+    config_id       = db.Column(db.Integer, db.ForeignKey('som_projection_config.id', ondelete='CASCADE'), nullable=False, index=True)
     x               = db.Column(db.Integer, nullable=False)
     y               = db.Column(db.Integer, nullable=False)
 
@@ -141,12 +147,10 @@ class SOMProjection(db.Model):
 
     @classmethod
     def get_latent_points_for_cell(cls, session, x, y, config_id=None):
-        projs = session.query(cls).filter_by(x=x, y=y)
+        query = session.query(cls).filter_by(x=x, y=y)
         if config_id is not None:
-            projs = projs.filter_by(config_id=config_id)
-        projs = projs.all()
-        return [p.point for p in projs]  # or [p.latent_point_id for p in projs]
-
+            query = query.filter_by(config_id=config_id)
+        return [p.point for p in query.all()]
 
 # ---------------------------
 # PCAProjectionConfig: Stores configuration details for PCA projections.
@@ -154,17 +158,20 @@ class SOMProjection(db.Model):
 class PCAProjectionConfig(db.Model):
     __tablename__ = 'pca_projection_config'
 
-    id            = db.Column(db.Integer, primary_key=True)
-    model_run_id  = db.Column(db.Integer, db.ForeignKey('model_run.id'), nullable=False, index=True)
-    n_components  = db.Column(db.Integer, nullable=False)
+    id              = db.Column(db.Integer, primary_key=True)
+    model_config_id = db.Column(
+        db.Integer,
+        db.ForeignKey('model_run_config.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True
+    )
+    n_components    = db.Column(db.Integer, nullable=False)
     additional_params = db.Column(db.JSON, nullable=True)
+    explained_variance = db.Column(db.JSON, nullable=True)
+    components         = db.Column(db.JSON,    nullable=True)
+    created_at      = db.Column(db.DateTime, server_default=db.func.now(), nullable=False)
 
-    config_id = db.Column(db.Integer,
-                          db.ForeignKey('model_run_config.id'),
-                          nullable=False,
-                          index=True)
-    
-    config    = db.relationship(
+    config = db.relationship(
         'ModelRunConfig',
         back_populates='pca_configs'
     )
@@ -176,7 +183,18 @@ class PCAProjectionConfig(db.Model):
     )
 
     def __repr__(self):
-        return f'<PCAConfig run={self.model_run_id} components={self.n_components}>'
+        return f'<PCAConfig model_config={self.model_config_id} components={self.n_components}>'
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'model_config_id': self.model_config_id,
+            'n_components': self.n_components,
+            'additional_params': self.additional_params,
+            'explained_variance':  self.explained_variance,
+            'components':         self.components,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
 
 
 # ---------------------------
@@ -187,8 +205,8 @@ class PCAProjection(db.Model):
 
     id              = db.Column(db.Integer, primary_key=True)
     created_at      = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    latent_point_id = db.Column(db.Integer, db.ForeignKey('latent_point.id'), nullable=False, index=True)
-    config_id       = db.Column(db.Integer, db.ForeignKey('pca_projection_config.id'), nullable=False, index=True)
+    latent_point_id = db.Column(db.Integer, db.ForeignKey('latent_point.id', ondelete='CASCADE'), nullable=False, index=True)
+    config_id       = db.Column(db.Integer, db.ForeignKey('pca_projection_config.id', ondelete='CASCADE'), nullable=False, index=True)
     dim             = db.Column(db.Integer, nullable=False)
     value           = db.Column(db.Float, nullable=False)
 
@@ -197,7 +215,10 @@ class PCAProjection(db.Model):
         back_populates='projections'
     )
 
-    point  = db.relationship('LatentPoint',           back_populates='pca_projections')
+    point = db.relationship(
+        'LatentPoint',
+        back_populates='pca_projections'
+    )
 
     @classmethod
     def get_vectors_for_config(cls, session, config_id):

@@ -24,6 +24,8 @@ class ExchangeRate(db.Model):
     id                = db.Column(db.Integer, primary_key=True)
     base_currency_id  = db.Column(db.Integer, db.ForeignKey('currency.id'), nullable=False)
     quote_currency_id = db.Column(db.Integer, db.ForeignKey('currency.id'), nullable=False)
+    interval          = db.Column(db.String(10), nullable=False, default='1d', index=True)
+
     open              = db.Column(db.Numeric(18,8), nullable=False)
     high              = db.Column(db.Numeric(18,8), nullable=False)
     low               = db.Column(db.Numeric(18,8), nullable=False)

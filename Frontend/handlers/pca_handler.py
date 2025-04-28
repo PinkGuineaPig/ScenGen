@@ -1,74 +1,89 @@
-import json
 import requests
-from Frontend.handlers.base import BaseConfigHandler, fetch_all_configs, API_BASE
+from Frontend.handlers.base import BaseConfigHandler, API_BASE
 
 class PcaConfigHandler(BaseConfigHandler):
+    """
+    Handler for PCA Configuration actions: Add/Train, Update, Delete.
+
+    Expects State keys:
+      - table_data:     list of current PCA‐row dicts
+      - selected_rows:  list of selected row indices
+      - model_cfg_id:   int, the selected ModelRunConfig ID
+      - pca_n_components: int
+      - pca_whiten:     list (empty or [True])
+      - pca_solver:     str
+    """
     id_prefix = "pca"
 
     @classmethod
     def handle(cls, trigger: str, **state) -> dict:
-        table_data     = state['table_data']
-        selected_rows  = state['selected_rows']
+        model_cfg_id   = state.get('model_cfg_id')
+        table_data     = state.get('table_data', [])
+        selected_rows  = state.get('selected_rows', [])
         n_components   = state.get('pca_n_components')
-        whiten_list    = state.get('pca_whiten') or []
+        whiten_flag    = bool(state.get('pca_whiten') or [])
         solver         = state.get('pca_solver', 'auto')
-        whiten_flag    = bool(whiten_list)
 
-        # 1) Add / Train
-        if trigger == 'pca-add-btn':
-            if not selected_rows:
+        base_url = f"{API_BASE}/model-configs/{model_cfg_id}/pca-configs"
+
+        def fetch_pcas():
+            resp = requests.get(base_url)
+            resp.raise_for_status()
+            return resp.json()
+
+        # 1) Add & trigger train
+        if trigger == 'pca-add-btn' and model_cfg_id:
+            if n_components is None:
                 return {}
-            # get model_config_id → latest run_id
-            cfg_id = table_data[selected_rows[0]]['id']
-            runs = requests.get(f"{API_BASE}/model-configs/{cfg_id}/runs").json()
-            if not runs:
-                return {}
-            run_id = runs[-1]['id']
 
             payload = {
-                'n_components':    n_components,
+                'n_components':      n_components,
                 'additional_params': {
-                     'whiten': whiten_flag,
-                     'solver': solver
+                    'whiten':    whiten_flag,
+                    'svd_solver': solver
                 }
             }
-            resp = requests.post(f"{API_BASE}/runs/{run_id}/pca-configs", json=payload)
-            if not resp.ok:
+            create = requests.post(base_url, json=payload)
+            if not create.ok:
                 return {}
-            pca_id = resp.json()['id']
-            # trigger PCA training
-            requests.post(f"{API_BASE}/runs/{run_id}/pca-configs/{pca_id}/train")
 
-            # refresh table
-            new_table = fetch_all_configs()
-            idx = next((i for i,r in enumerate(new_table) if 
-                        r.get('pca_n_components')==n_components and
-                        r.get('pca_solver')==solver), None)
-            return {'table': new_table, 'clear': [idx] if idx is not None else []}
+            pca_cfg_id = create.json().get('id')
+            # kick off async training
+            requests.post(f"{base_url}/{pca_cfg_id}/train")
 
-        # 2) Update
-        if trigger == 'pca-update-btn' and selected_rows:
-            row = table_data[selected_rows[0]]
-            cfg_id = row['id']               # this is the model_config_id
-            runs = requests.get(f"{API_BASE}/model-configs/{cfg_id}/runs").json()
-            run_id = runs[-1]['id']
-            # assume you have a pca_config_id column in your row
-            pca_cfg_id = row.get('pca_cfg_id')
-            payload = {
-                'n_components': n_components,
-                'additional_params': { 'whiten': whiten_flag, 'solver': solver }
+            # reload list & auto‐select new row
+            new_rows = fetch_pcas()
+            idx = next((i for i, r in enumerate(new_rows) if r['id']==pca_cfg_id), None)
+            return {
+                'table': new_rows,
+                'clear': [idx] if idx is not None else []
             }
-            requests.put(f"{API_BASE}/runs/{run_id}/pca-configs/{pca_cfg_id}", json=payload)
-            return {'table': fetch_all_configs()}
+
+        # 2) Update existing
+        if trigger == 'pca-update-btn' and selected_rows:
+            pca_cfg_id = table_data[selected_rows[0]]['id']
+            payload = {
+                'n_components':      n_components,
+                'additional_params': {
+                    'whiten':    whiten_flag,
+                    'svd_solver': solver
+                }
+            }
+            upd = requests.put(f"{base_url}/{pca_cfg_id}", json=payload)
+            if not upd.ok:
+                return {}
+            return {'table': fetch_pcas()}
 
         # 3) Delete
         if trigger == 'pca-delete-btn' and selected_rows:
-            row = table_data[selected_rows[0]]
-            cfg_id = row['id']
-            runs = requests.get(f"{API_BASE}/model-configs/{cfg_id}/runs").json()
-            run_id = runs[-1]['id']
-            pca_cfg_id = row.get('pca_cfg_id')
-            requests.delete(f"{API_BASE}/runs/{run_id}/pca-configs/{pca_cfg_id}")
-            return {'table': fetch_all_configs(), 'clear': []}
+            pca_cfg_id = table_data[selected_rows[0]]['id']
+            dl = requests.delete(f"{base_url}/{pca_cfg_id}")
+            if not dl.ok:
+                return {}
+            return {
+                'table': fetch_pcas(),
+                'clear': []
+            }
 
+        # otherwise no action
         return {}

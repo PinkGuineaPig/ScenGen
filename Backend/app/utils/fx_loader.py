@@ -66,48 +66,70 @@ def upsert_currencies(session, codes: list[str]):
     session.commit()
 
 
-def upsert_exchange_rates(session, base: str, quote: str, records: list[dict]):
+def upsert_exchange_rates(
+    session,
+    base: str,
+    quote: str,
+    records: list[dict],
+    interval: str = '1d'
+):
     """
     Upserts exchange rate records into the ExchangeRate table.
-    - Ensures base and quote currencies exist.
-    - Inserts or updates OHLC and timestamp values.
+    
+    :param session:       SQLAlchemy session
+    :param base:          Base currency code (e.g. "EUR")
+    :param quote:         Quote currency code (e.g. "USD")
+    :param records:       List of dicts with keys like "date", "open"/"1. open", etc.
+    :param interval:      Bar size, e.g. "1d", "1min", "5min", etc.
     """
+    # 1) Ensure currencies exist
     upsert_currencies(session, [base, quote])
-    base_obj = session.query(Currency).filter_by(code=base).one()
+    base_obj  = session.query(Currency).filter_by(code=base).one()
     quote_obj = session.query(Currency).filter_by(code=quote).one()
 
+    # 2) Upsert each record
     for rec in records:
-        ts = datetime.strptime(rec["date"], "%Y-%m-%d %H:%M:%S"
-                               if " " in rec["date"] else "%Y-%m-%d")
-        # support both daily and intraday keys
+        # parse timestamp (supports "YYYY-MM-DD" and "YYYY-MM-DD HH:MM:SS")
+        date_str = rec["date"]
+        fmt = "%Y-%m-%d %H:%M:%S" if " " in date_str else "%Y-%m-%d"
+        ts = datetime.strptime(date_str, fmt)
+
+        # extract OHLC values (supports both AV keys and generic keys)
         open_val  = float(rec.get("1. open", rec.get("open")))
         high_val  = float(rec.get("2. high", rec.get("high")))
         low_val   = float(rec.get("3. low",  rec.get("low")))
-        close_val = float(rec.get("4. close",rec.get("close")))
+        close_val = float(rec.get("4. close", rec.get("close")))
 
+        # check for existing row
         existing = (
             session.query(ExchangeRate)
                    .filter_by(
                        base_currency_id=base_obj.id,
                        quote_currency_id=quote_obj.id,
+                       interval=interval,
                        timestamp=ts
                    )
                    .one_or_none()
         )
 
         if existing:
+            # update values
             existing.open  = open_val
             existing.high  = high_val
             existing.low   = low_val
             existing.close = close_val
         else:
+            # insert new row
             session.add(ExchangeRate(
                 base_currency_id=base_obj.id,
                 quote_currency_id=quote_obj.id,
+                interval=interval,
                 open=open_val,
                 high=high_val,
                 low=low_val,
                 close=close_val,
                 timestamp=ts
             ))
+
+    # 3) Commit all changes
     session.commit()

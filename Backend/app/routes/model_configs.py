@@ -86,20 +86,3 @@ def trigger_training(config_id):
     ).start()
     return jsonify({'status': 'training started'}), 202
 
-@model_configs_bp.route('/<int:config_id>/runs', methods=['GET'])
-def list_runs_for_config(config_id):
-    """
-    Return all ModelRun entries for the given ModelRunConfig, ordered by version.
-    """
-    # Validate existence
-    ModelRunConfig.query.get_or_404(config_id, description=f"Config {config_id} not found")
-    runs = (
-        ModelRun.query
-        .filter_by(config_id=config_id)
-        .order_by(ModelRun.version)
-        .all()
-    )
-    payload = [
-        r.to_frontend_dict() for r in runs
-    ]
-    return jsonify(payload), 200

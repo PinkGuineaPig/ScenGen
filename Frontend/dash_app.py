@@ -1,9 +1,12 @@
 # Frontend/dash_app.py
 
 from dash import Dash, html
-from Frontend.components.selector import ConfigTableSection  # import the table-only component
-from Frontend.components.modals import ConfigModals
-from Frontend.components.plots import ConfigPlots   # NEW
+import dash
+
+from Frontend.components.selector import ConfigTableSection
+from Frontend.components.modals    import ConfigModals
+from Frontend.components.plots     import ConfigPlots
+from Frontend.components.currency_plots import CurrencyPlots
 
 # Initialize Dash app
 app = Dash(
@@ -12,18 +15,42 @@ app = Dash(
     assets_folder="assets"
 )
 
-# Layout
 app.layout = html.Div([
-    ConfigTableSection(),  # use the table-only section
-    ConfigModals(),
-    ConfigPlots()
+
+    html.Details(
+        className='chapter',
+        open=True,
+        children=[
+            html.Summary("1. Data Selection"),
+            html.Div(ConfigTableSection())
+        ]
+    ),
+
+    # 2) Train Models
+    html.Details(
+        className='chapter',
+        open=True,
+        children=[
+            html.Summary("2. Train Models"),
+            html.Div(ConfigModals())
+        ]
+    ),
+
+    # 3) Analysis: SOM & PCA
+    html.Details(
+        className='chapter',
+        open=False,
+        children=[
+            html.Summary("3. Analysis: SOM & PCA"),
+            html.Div(ConfigPlots()),
+            html.Div(CurrencyPlots())
+        ]
+    )
 ])
 
-# Expose main entrypoint for console-script
+
 def main():
-    # Use the new run() method
     app.run(host="0.0.0.0", port=8050)
 
-# Allow direct python invocation
 if __name__ == '__main__':
     main()

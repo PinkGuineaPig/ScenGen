@@ -4,10 +4,12 @@ from dash.exceptions import PreventUpdate
 
 import json
 
-from Frontend.handlers.base import fetch_all_configs
+from Frontend.handlers.base import fetch_all_model_configs
 from Frontend.handlers.model_handler import ModelConfigHandler
 from Frontend.handlers.som_handler import SomConfigHandler
 from Frontend.handlers.pca_handler import PcaConfigHandler
+
+import ast
 
 # List of all config handlers
 HANDLERS = [ModelConfigHandler, SomConfigHandler, PcaConfigHandler]
@@ -59,7 +61,7 @@ def ConfigModals():
                         html.Label('Latent Dimension'),
                         dcc.Input(id='model-latent-dim', type='number', min=1, style={'width': '100%'}),
                         html.Label('Base KL Weight'),
-                        dcc.Input(id='model-base-kl-weight', type='number', step=0.001, min=0, style={'width': '100%'}),
+                        dcc.Input(id='model-base-kl-weight', type='number', step=0.0001, min=0, style={'width': '100%'}),
                         html.Label('Batch Size'),
                         dcc.Input(id='model-batch-size', type='number', min=1, style={'width': '100%'}),
                         html.Label('Sequence Length'),
@@ -78,7 +80,7 @@ def ConfigModals():
                             inline=True
                         ),
                         html.Label('Learning Rate'),
-                        dcc.Input(id='model-learning-rate', type='number', step=0.0001, min=0, style={'width': '100%'}),
+                        dcc.Input(id='model-learning-rate', type='number', step=0.000001, min=0, style={'width': '100%'}),
                     ]
                 ),
                 html.Br(),
@@ -192,6 +194,7 @@ def ConfigModals():
     })
 
 
+
 @callback(
     Output('model-pairs', 'options'),
     Input('load-pairs-interval', 'n_intervals')
@@ -205,163 +208,395 @@ def load_currency_options(n_intervals):
         pairs = []
     return [{'label': p, 'value': p} for p in pairs]
 
+def flatten_model_rows(raw_rows):
+    """Convert list of model‐dicts into Dash table rows with currency_pairs as a string."""
+    out = []
+    for m in raw_rows:
+        # get the raw currency_pairs value
+        cp_raw = m.get('currency_pairs', [])
+
+        # if it's already a list, join it; if it's a str, keep it as-is
+        if isinstance(cp_raw, list):
+            cp_str = ", ".join(cp_raw)
+        elif isinstance(cp_raw, str):
+            cp_str = cp_raw
+        else:
+            cp_str = ""
+
+        p = m.get('parameters', {}) or {}
+        out.append({
+            'id':             m['id'],
+            'model_type':     m['model_type'],
+            'created_at':     m['created_at'],
+            'currency_pairs': cp_str,
+            'learning_rate':  p.get('learning_rate'),
+            'latent_dim':     p.get('latent_dim'),
+            'base_kl_weight': p.get('base_kl_weight'),
+            'batch_size':     p.get('batch_size'),
+            'seq_len':        p.get('seq_len'),
+            'epochs':         p.get('epochs'),
+            'hidden_size':    p.get('hidden_size'),
+            'bidirectional':  p.get('bidirectional'),
+            'num_layers':     p.get('num_layers'),
+        })
+    return out
+
 @callback(
-    Output('configs-table', 'data'),
+    Output('model-configs-table', 'data'),
+    Output('model-configs-table', 'selected_rows'),
     Output('model-confirm-delete', 'displayed'),
     Output('model-confirm-delete', 'message'),
-    Output('configs-table', 'selected_rows'),
-    Input('load-configs-interval', 'n_intervals'),
-    Input('model-delete-btn', 'n_clicks'),
-    Input('model-confirm-delete', 'submit_n_clicks'),
-    Input('model-confirm-delete', 'cancel_n_clicks'),
-    Input('model-add-btn', 'n_clicks'),
-    Input('som-add-btn', 'n_clicks'),
-    Input('som-update-btn', 'n_clicks'),
-    Input('som-delete-btn', 'n_clicks'),
-    Input('pca-add-btn', 'n_clicks'),
-    Input('pca-update-btn', 'n_clicks'),
-    Input('pca-delete-btn', 'n_clicks'),
-    State('configs-table', 'data'),
-    State('configs-table', 'selected_rows'),
-    State('model-type', 'value'),
-    State('model-pairs', 'value'),
-    State('model-latent-dim', 'value'),
-    State('model-base-kl-weight', 'value'),
-    State('model-batch-size', 'value'),
-    State('model-seq-len', 'value'),
-    State('model-epochs', 'value'),
-    State('model-hidden-size', 'value'),
-    State('model-num-layers', 'value'),
-    State('model-bidirectional', 'value'),
-    State('model-learning-rate', 'value'),
-    State('som-x-dim', 'value'),
-    State('som-y-dim', 'value'),
-    State('som-iterations', 'value'),
-    State('som-additional-params', 'value'),
-    State('pca-n-components', 'value'),
-    State('pca-whiten', 'value'),
-    State('pca-solver', 'value')
+    Input('load-model-interval',    'n_intervals'),
+    Input('model-add-btn',          'n_clicks'),
+    Input('model-delete-btn',       'n_clicks'),
+    Input('model-confirm-delete',   'submit_n_clicks'),
+    Input('model-confirm-delete',   'cancel_n_clicks'),
+    State('model-configs-table',    'data'),
+    State('model-configs-table',    'selected_rows'),
+    State('model-type',             'value'),
+    State('model-pairs',            'value'),
+    State('model-latent-dim',       'value'),
+    State('model-base-kl-weight',   'value'),
+    State('model-batch-size',       'value'),
+    State('model-seq-len',          'value'),
+    State('model-epochs',           'value'),
+    State('model-hidden-size',      'value'),
+    State('model-num-layers',       'value'),
+    State('model-bidirectional',    'value'),
+    State('model-learning-rate',    'value'),
 )
-def dispatch_all(
+def model_dispatch(
     n_load,
-    m_del, m_ok, m_cancel, m_add,
-    s_add, s_upd, s_del,
-    p_add, p_upd, p_del,
+    add_click, delete_click, confirm_click, cancel_click,
     table_data, sel_rows,
-    mtype, pairs, latent, base_kl, batch, seq_len, epochs, hidden, num_layers, bidirectional, lr,
-    som_x_dim, som_y_dim, som_iterations, som_additional_params,
-    pca_n_components, pca_whiten, pca_solver
+    mtype, pairs, latent_dim, base_kl_weight, batch_size, seq_len,
+    epochs, hidden_size, num_layers, bidirectional, learning_rate
 ):
     trig = callback_context.triggered[0]['prop_id'].split('.')[0]
 
-    # 1) initial load
-    if trig == 'load-configs-interval':
-            table = fetch_all_configs()
-            return table, False, "", [0] if table else []
+    # 1) Initial load: fetch & flatten all configs
+    if trig == 'load-model-interval':
+        raw = fetch_all_model_configs()
+        rows = flatten_model_rows(raw)
+        sel = [0] if rows else []
+        return rows, sel, False, ""
 
-    # collect all state into a dict for handlers
-    state = {
-        'table_data': table_data,
-        'selected_rows': sel_rows,
-        # model params
-        'model_type': mtype,
-        'pairs': pairs,
-        'latent_dim': latent,
-        'base_kl_weight': base_kl,
-        'batch_size': batch,
-        'seq_len': seq_len,
-        'epochs': epochs,
-        'hidden_size': hidden,
-        'num_layers': num_layers,
-        'learning_rate': lr,
-        'bidirectional': bidirectional,
-        # som params
-        'som_x_dim': som_x_dim,
-        'som_y_dim': som_y_dim,
-        'som_iterations': som_iterations,
-        'som_additional_params': som_additional_params,
-        # PCA:
-        'pca_n_components': pca_n_components,
-        'pca_whiten':       pca_whiten,
-        'pca_solver':       pca_solver
-    }
+    # 2) Any modal action: Add / Update / Delete
+    if trig.startswith('model-'):
+        result = ModelConfigHandler.handle(
+            trigger        = trig,
+            table_data     = table_data,
+            selected_rows  = sel_rows,
+            model_type     = mtype,
+            pairs          = pairs,
+            latent_dim     = latent_dim,
+            base_kl_weight = base_kl_weight,
+            batch_size     = batch_size,
+            seq_len        = seq_len,
+            epochs         = epochs,
+            hidden_size    = hidden_size,
+            num_layers     = num_layers,
+            bidirectional  = bidirectional,
+            learning_rate  = learning_rate
+        ) or {}
 
-    # 2) dispatch to handlers — dynamically invoke correct handler
-    for Handler in HANDLERS:
-        if Handler.handles_trigger(trig):
-            result = Handler.handle(trigger=trig, **state) or {}
-            return (
-                result.get('table', no_update),
-                result.get('dialog', False),
-                result.get('message', ''),
-                result.get('clear', no_update)
-            )
+        new_table = result.get('table', no_update)
 
-    # fallback: no change
-    return no_update, False, "", no_update
+        # Only flatten if it's raw API dicts (they contain 'parameters')
+        if isinstance(new_table, list) and new_table and 'parameters' in new_table[0]:
+            new_table = flatten_model_rows(new_table)
+
+        new_sel   = result.get('clear', no_update)
+        dialog    = result.get('dialog', no_update)
+        message   = result.get('message', "")
+
+        return new_table, new_sel, dialog, message
+
+    # 3) Otherwise, do nothing
+    raise PreventUpdate
+
+
+
+# ----------------------------------------------------------------------------
+# SOM CRUD dispatcher + reload on model-select
+# ----------------------------------------------------------------------------
+@callback(
+    Output('som-configs-table',    'data'),
+    Output('som-configs-table',    'selected_rows'),
+    Input('model-configs-table',   'selected_rows'),
+    Input('som-add-btn',           'n_clicks'),
+    Input('som-update-btn',        'n_clicks'),
+    Input('som-delete-btn',        'n_clicks'),
+    State('model-configs-table',   'data'),
+    State('som-configs-table',     'data'),
+    State('som-configs-table',     'selected_rows'),
+    State('som-x-dim',             'value'),
+    State('som-y-dim',             'value'),
+    State('som-iterations',        'value'),
+    State('som-additional-params', 'value'),
+)
+def som_dispatch(
+    model_sel, add_click, upd_click, del_click,
+    model_rows, som_rows, som_sel,
+    x_dim, y_dim, iterations, raw_params
+):
+    trig = callback_context.triggered[0]['prop_id'].split('.')[0]
+
+    # — inline “flatten & stringify” helper —
+    def flatten(rows):
+        out = []
+        for c in rows:
+            # 1) get the dict (or empty dict)
+            params = c.get('additional_params') or {}
+
+            # 2) if somehow it’s still a string, parse it back into a dict
+            if isinstance(params, str):
+                try:
+                    params = json.loads(params)
+                except json.JSONDecodeError:
+                    params = ast.literal_eval(params)
+
+            # 3) re‐stringify for display
+            params_str = json.dumps(params)
+
+            out.append({
+                'id':                c['id'],
+                'x_dim':             c['x_dim'],
+                'y_dim':             c['y_dim'],
+                'iterations':        c['iterations'],
+                'additional_params': params_str,   # <— string for table
+                'created_at':        c.get('created_at')
+            })
+        return out
+
+    # nothing to do until you have at least one model
+    if not model_rows:
+        raise PreventUpdate
+
+    # 1) model selection changed → reload + flatten
+    if trig == 'model-configs-table':
+        cfg_id = model_rows[model_sel[0]]['id'] if model_sel else None
+        if not cfg_id:
+            return [], []
+        resp = requests.get(f"{API_BASE}/model-configs/{cfg_id}/som-configs")
+        resp.raise_for_status()
+        return flatten(resp.json()), [0] if resp.json() else []
+
+    # 2) SOM add/update/delete
+    cfg_id = model_rows[model_sel[0]]['id']
+
+    # parse the user‐entered JSON from the textarea
+    params = raw_params or {}
+    if isinstance(params, str):
+        try:
+            params = json.loads(params)
+        except json.JSONDecodeError:
+            params = ast.literal_eval(params)
+
+    result = SomConfigHandler.handle(
+        trigger               = trig,
+        table_data            = som_rows or [],
+        selected_rows         = som_sel or [],
+        model_cfg_id          = cfg_id,
+        som_x_dim             = x_dim,
+        som_y_dim             = y_dim,
+        som_iterations        = iterations,
+        som_additional_params = params
+    ) or {}
+
+    # get the new list back, flatten if it’s a fresh list
+    new_table = result.get('table', som_rows)
+    if isinstance(new_table, list):
+        new_table = flatten(new_table)
+
+    new_sel = result.get('clear', som_sel)
+    return new_table, new_sel
+
+
+# ----------------------------------------------------------------------------
+# PCA CRUD dispatcher + reload on model-select
+# ----------------------------------------------------------------------------
+@callback(
+    Output('pca-configs-table',    'data'),
+    Output('pca-configs-table',    'selected_rows'),
+    Input('model-configs-table',   'selected_rows'),
+    Input('pca-add-btn',           'n_clicks'),
+    Input('pca-update-btn',        'n_clicks'),
+    Input('pca-delete-btn',        'n_clicks'),
+    State('model-configs-table',   'data'),
+    State('pca-configs-table',     'data'),
+    State('pca-configs-table',     'selected_rows'),
+    State('pca-n-components',      'value'),
+    State('pca-whiten',            'value'),
+    State('pca-solver',            'value'),
+)
+def pca_dispatch(
+    model_sel, add_click, upd_click, del_click,
+    model_rows, pca_rows, pca_sel,
+    n_components, whiten_input, solver_input
+):
+    trig = callback_context.triggered[0]['prop_id'].split('.')[0]
+
+    # ─── inline flatten helper ────────────────────────
+    def flatten(rows):
+        out = []
+        for c in rows:
+            params = c.get('additional_params') or {}
+            # parse if it sneaks in as a string
+            if isinstance(params, str):
+                try:
+                    params = json.loads(params)
+                except json.JSONDecodeError:
+                    params = ast.literal_eval(params)
+            out.append({
+                'id':           c['id'],
+                'n_components': c.get('n_components'),
+                'whiten':       params.get('whiten', False),
+                'svd_solver':   params.get('svd_solver', params.get('solver', '')),
+                'created_at':   c.get('created_at')
+            })
+        return out
+
+    # nothing to do until a model is loaded
+    if not model_rows:
+        raise PreventUpdate
+
+    # 1) model selection changed → reload & flatten
+    if trig == 'model-configs-table':
+        cfg_id = model_rows[model_sel[0]]['id'] if model_sel else None
+        if not cfg_id:
+            return [], []
+        resp = requests.get(f"{API_BASE}/model-configs/{cfg_id}/pca-configs")
+        resp.raise_for_status()
+        raw_list = resp.json()
+        rows = flatten(raw_list)
+        return rows, [0] if rows else []
+
+    # 2) PCA add/update/delete → call handler, then flatten its table
+    cfg_id = model_rows[model_sel[0]]['id']
+    result = PcaConfigHandler.handle(
+        trigger        = trig,
+        table_data     = pca_rows or [],
+        selected_rows  = pca_sel or [],
+        model_cfg_id   = cfg_id,
+        pca_n_components = n_components,
+        pca_whiten       = bool(whiten_input),
+        pca_solver       = solver_input
+    ) or {}
+
+    new_table = result.get('table', pca_rows)
+    if isinstance(new_table, list):
+        new_table = flatten(new_table)
+
+    new_sel = result.get('clear', pca_sel)
+    return new_table, new_sel
+
+
 
 @callback(
-    Output('model-type', 'value'),
-    Output('model-pairs', 'value'),
-    Output('model-latent-dim', 'value'),
-    Output('model-base-kl-weight', 'value'),
-    Output('model-batch-size', 'value'),
-    Output('model-seq-len', 'value'),
-    Output('model-epochs', 'value'),
-    Output('model-hidden-size', 'value'),
-    Output('model-num-layers', 'value'),
-    Output('model-bidirectional', 'value'),
-    Output('model-learning-rate', 'value'),
-    Output('som-x-dim', 'value'),
-    Output('som-y-dim', 'value'),
-    Output('som-iterations', 'value'),
-    Output('som-additional-params', 'value'),
-    Output('pca-n-components', 'value'),
-    Output('pca-whiten', 'value'),
-    Output('pca-solver', 'value'),
-    Input('configs-table', 'selected_rows'),
-    State('configs-table', 'data'),
+    Output('model-type',            'value'),
+    Output('model-pairs',           'value'),
+    Output('model-latent-dim',      'value'),
+    Output('model-base-kl-weight',  'value'),
+    Output('model-batch-size',      'value'),
+    Output('model-seq-len',         'value'),
+    Output('model-epochs',          'value'),
+    Output('model-hidden-size',     'value'),
+    Output('model-num-layers',      'value'),
+    Output('model-bidirectional',   'value'),
+    Output('model-learning-rate',   'value'),
+    Input('model-configs-table',    'selected_rows'),
+    State('model-configs-table',    'data'),
     prevent_initial_call=True
 )
-def populate_modals(selected_rows, table_data):
+def populate_model_modal(selected_rows, table_data):
     if not selected_rows or not table_data:
         raise PreventUpdate
 
     row = table_data[selected_rows[0]]
-    model_type = row.get('model_type')
-    pairs = row.get('currency_pairs', '').split(',') if row.get('currency_pairs') else []
-    latent_dim = row.get('latent_dim')
-    base_kl = row.get('base_kl_weight')
-    batch = row.get('batch_size')
-    seq_len = row.get('seq_len')
-    epochs = row.get('epochs')
-    hidden_size = row.get('hidden_size')
-    num_layers = row.get('num_layers')
+    print(row.get('currency_pairs'))
+    # pull fields out of the selected row
+    model_type    = row.get('model_type')
+    pairs_raw = row.get('currency_pairs', '')
+    pairs         = pairs = [p.strip() for p in pairs_raw.split(',') if p.strip()]
+    latent_dim    = row.get('latent_dim')
+    base_kl       = row.get('base_kl_weight')
+    batch_size    = row.get('batch_size')
+    seq_len       = row.get('seq_len')
+    epochs        = row.get('epochs')
+    hidden_size   = row.get('hidden_size')
+    num_layers    = row.get('num_layers')
     bidirectional = [True] if row.get('bidirectional') else []
     learning_rate = row.get('learning_rate')
 
-    som_dims = row.get('som_dims') or ''
-    try:
-        x_str, y_str = som_dims.split('|')
-        x_dim = int(x_str)
-        y_dim = int(y_str)
-    except Exception:
-        x_dim = y_dim = None
-    som_iterations = row.get('som_iterations')
-    som_params = {}
-    if row.get('som_sigma') is not None:
-        som_params['sigma'] = row['som_sigma']
-    if row.get('som_learning_rate') is not None:
-        som_params['learning_rate'] = row['som_learning_rate']
-    som_json = json.dumps(som_params) if som_params else ''
-
-    pca_n = row.get('pca_n_components')
-    pca_whiten = [True] if row.get('pca_whiten') else []
-    pca_solver = row.get('pca_solver') or 'auto'
-
     return (
-        model_type, pairs, latent_dim, base_kl, batch,
-        seq_len, epochs, hidden_size, num_layers, bidirectional, learning_rate,
-        x_dim, y_dim, som_iterations, som_json,
-        pca_n, pca_whiten, pca_solver
+        model_type,
+        pairs,
+        latent_dim,
+        base_kl,
+        batch_size,
+        seq_len,
+        epochs,
+        hidden_size,
+        num_layers,
+        bidirectional,
+        learning_rate
     )
+
+
+
+# ----------------------------------------------------------------------------
+# Populate SOM‐modal inputs when a SOM row is selected
+# ----------------------------------------------------------------------------
+@callback(
+    Output('som-x-dim',             'value'),
+    Output('som-y-dim',             'value'),
+    Output('som-iterations',        'value'),
+    Output('som-additional-params', 'value'),
+    Input('som-configs-table',      'selected_rows'),
+    State('som-configs-table',      'data'),
+    prevent_initial_call=True
+)
+def populate_som_modal(selected, rows):
+    if not selected or not rows:
+        raise PreventUpdate
+
+    row = rows[selected[0]]
+    # Pull the stored fields
+    x = row.get('x_dim')
+    y = row.get('y_dim')
+    iters = row.get('iterations')
+    # We stored a JSON blob in additional_params, pass it back as a string
+    params = row.get('additional_params') or {}
+    params_str = json.dumps(params, indent=2)
+
+    return x, y, iters, params_str
+
+# ----------------------------------------------------------------------------
+# Populate PCA‐modal inputs when a PCA row is selected
+# ----------------------------------------------------------------------------
+@callback(
+    Output('pca-n-components', 'value'),
+    Output('pca-whiten',       'value'),
+    Output('pca-solver',       'value'),
+    Input('pca-configs-table', 'selected_rows'),
+    State('pca-configs-table', 'data'),
+)
+def populate_pca_modal(selected_rows, table_data):
+    # If nothing is selected, don’t change the modal
+    if not selected_rows:
+        raise PreventUpdate
+
+    # Grab the dict for the selected row
+    row = table_data[selected_rows[0]]
+
+    # n_components is stored as an integer
+    n_comp = row.get('n_components')
+
+    # whiten was flattened into a boolean; Checklist wants a list
+    whiten = [True] if row.get('whiten') else []
+
+    # svd_solver is stored as a string
+    solver = row.get('svd_solver')
+
+    return n_comp, whiten, solver

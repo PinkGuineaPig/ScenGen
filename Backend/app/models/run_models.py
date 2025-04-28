@@ -3,6 +3,8 @@ from sqlalchemy import Column, Integer, String, DateTime, JSON, ForeignKey, Floa
 from sqlalchemy.orm import relationship, joinedload
 from Backend.app import db
 
+from sqlalchemy.ext.associationproxy import association_proxy
+
 # ---------------------------
 # ModelRunConfig: Stores all model-related hyperparameters set by the user
 # ---------------------------
@@ -34,6 +36,8 @@ class ModelRunConfig(db.Model):
         back_populates='config',
         cascade='all, delete-orphan'
     )
+
+    latent_points = association_proxy('run', 'latent_points')
 
     def __repr__(self):
         return (

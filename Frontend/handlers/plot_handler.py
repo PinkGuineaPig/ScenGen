@@ -3,7 +3,10 @@
 import requests
 from dash import Output, Input, State, callback
 import plotly.graph_objects as go
-from Frontend.handlers.base import API_BASE
+from collections import defaultdict
+
+API_BASE = "http://localhost:5000/api"
+
 
 # --- Utility function ---
 def empty_figure(message="No data available"):
@@ -21,117 +24,144 @@ def empty_figure(message="No data available"):
     )
     return fig
 
-# --- Callback to fetch losses and update plots ---
+
+# --- Loss & KL plots for selected model run ---
 @callback(
     Output('loss-plot', 'figure'),
-    Output('kl-plot', 'figure'),
-    Input('configs-table', 'selected_rows'),
-    State('configs-table', 'data')
+    Output('kl-plot',   'figure'),
+    Input('model-configs-table', 'selected_rows'),
+    State('model-configs-table', 'data'),
 )
-def update_plots(selected_rows, table_data):
-    if not selected_rows or not table_data:
-        return empty_figure("No Loss Data Available"), empty_figure("No KL Data Available")
+def update_plots(selected_rows, model_rows):
+    if not selected_rows or not model_rows:
+        return (
+            empty_figure("No Loss Data Available"),
+            empty_figure("No KL Data Available")
+        )
 
-    selected_row = table_data[selected_rows[0]]
-    config_id = selected_row.get('id')
-    if not config_id:
-        return empty_figure("Invalid Config ID"), empty_figure("Invalid Config ID")
+    cfg = model_rows[selected_rows[0]]
+    cfg_id = cfg.get('id')
+    if not cfg_id:
+        return (
+            empty_figure("Invalid Config ID"),
+            empty_figure("Invalid Config ID")
+        )
 
-    # Fetch latest run_id for this config
+    # 1) get latest run for config
     try:
-        runs_resp = requests.get(f"{API_BASE}/model-configs/{config_id}/runs")
-        runs_resp.raise_for_status()
-        runs = runs_resp.json()
+        runs = requests.get(f"{API_BASE}/model-configs/{cfg_id}/runs").json()
         if not runs:
-            return empty_figure("No runs available"), empty_figure("No runs available")
+            return (
+                empty_figure("No runs available"),
+                empty_figure("No runs available")
+            )
         run_id = runs[-1]['id']
-    except Exception as e:
-        print(f"Failed to fetch runs for config {config_id}: {e}")
-        return empty_figure("Error fetching runs"), empty_figure("Error fetching runs")
+    except Exception:
+        return (
+            empty_figure("Error fetching runs"),
+            empty_figure("Error fetching runs")
+        )
 
-    # Fetch losses for this run
+    # 2) fetch losses
     try:
-        loss_resp = requests.get(f"{API_BASE}/runs/{run_id}/losses")
-        loss_resp.raise_for_status()
-        losses = loss_resp.json()
-    except Exception as e:
-        print(f"Failed to fetch losses for run {run_id}: {e}")
-        return empty_figure("Error fetching Loss"), empty_figure("Error fetching KL")
-
+        losses = requests.get(f"{API_BASE}/runs/{run_id}/losses").json()
+    except Exception:
+        return (
+            empty_figure("Error fetching Loss"),
+            empty_figure("Error fetching KL")
+        )
     if not losses:
-        return empty_figure("No Loss Data Available"), empty_figure("No KL Data Available")
+        return (
+            empty_figure("No Loss Data Available"),
+            empty_figure("No KL Data Available")
+        )
 
-    # Separate train/test losses and KL divergences
-    train_loss = [(d['epoch'], d['value']) for d in losses if d['loss_type'] == 'train']
-    test_loss  = [(d['epoch'], d['value']) for d in losses if d['loss_type'] == 'test']
-    train_kl   = [(d['epoch'], d['value']) for d in losses if d['loss_type'] == 'train_kl']
-    test_kl    = [(d['epoch'], d['value']) for d in losses if d['loss_type'] == 'test_kl']
+    # 3) split out curves
+    train_loss = [(d['epoch'], d['value']) for d in losses if d['loss_type']=='train']
+    test_loss  = [(d['epoch'], d['value']) for d in losses if d['loss_type']=='test']
+    train_kl   = [(d['epoch'], d['value']) for d in losses if d['loss_type']=='train_kl']
+    test_kl    = [(d['epoch'], d['value']) for d in losses if d['loss_type']=='test_kl']
 
-    # Create loss plot
+    # 4) build figures
     loss_fig = go.Figure()
     if train_loss:
-        epochs, values = zip(*train_loss)
-        loss_fig.add_trace(go.Scatter(x=epochs, y=values, mode='lines', name='Train Loss'))
+        x,y = zip(*train_loss); loss_fig.add_trace(go.Scatter(x=x,y=y,mode='lines',name='Train Loss'))
     if test_loss:
-        epochs, values = zip(*test_loss)
-        loss_fig.add_trace(go.Scatter(x=epochs, y=values, mode='lines', name='Test Loss'))
+        x,y = zip(*test_loss);  loss_fig.add_trace(go.Scatter(x=x,y=y,mode='lines',name='Test Loss'))
     loss_fig.update_layout(title='Loss Curve', xaxis_title='Epoch', yaxis_title='Loss')
 
-    # Create KL plot
     kl_fig = go.Figure()
     if train_kl:
-        epochs, values = zip(*train_kl)
-        kl_fig.add_trace(go.Scatter(x=epochs, y=values, mode='lines', name='Train KL'))
+        x,y = zip(*train_kl); kl_fig.add_trace(go.Scatter(x=x,y=y,mode='lines',name='Train KL'))
     if test_kl:
-        epochs, values = zip(*test_kl)
-        kl_fig.add_trace(go.Scatter(x=epochs, y=values, mode='lines', name='Test KL'))
+        x,y = zip(*test_kl);  kl_fig.add_trace(go.Scatter(x=x,y=y,mode='lines',name='Test KL'))
     kl_fig.update_layout(title='KL Divergence Curve', xaxis_title='Epoch', yaxis_title='KL Divergence')
 
     return loss_fig, kl_fig
 
 
-
-
-
+# --- SOM heatmap for selected SOM config ---
 @callback(
     Output('som-heatmap-plot', 'figure'),
-    Input('som-projection-store', 'data')
+    Input('som-configs-table', 'selected_rows'),
+    State('som-configs-table', 'data'),
 )
-def update_som_heatmap(projection_data):
+def update_som_heatmap(selected_rows, som_rows):
+    if not selected_rows or not som_rows:
+        return empty_figure("No SOM Data")
 
-    print('updating heatmap!')
+    cfg = som_rows[selected_rows[0]]
+    som_cfg_id = cfg.get('id')
+    if not som_cfg_id:
+        return empty_figure("Invalid SOM Config")
 
-    if not projection_data:
-        fig = go.Figure()
-        fig.update_layout(
-            annotations=[dict(text="No SOM Data", x=0.5, y=0.5, showarrow=False, font_size=20)],
-            xaxis={'visible': False},
-            yaxis={'visible': False}
-        )
-        return fig
+    # fetch projections for this SOM config
+    try:
+        proj = requests.get(f"{API_BASE}/som-projections/{som_cfg_id}").json()
+    except Exception:
+        return empty_figure("Error fetching SOM data")
 
-    # Find grid size automatically
-    xs = [p['x'] for p in projection_data]
-    ys = [p['y'] for p in projection_data]
-    max_x = max(xs) + 1
-    max_y = max(ys) + 1
+    if not proj:
+        return empty_figure("No SOM Data")
 
-    # Build count matrix
-    grid = [[0 for _ in range(max_x)] for _ in range(max_y)]  # [y][x]
+    # 1) determine grid dims
+    xs = [p['x'] for p in proj]
+    ys = [p['y'] for p in proj]
+    max_x, max_y = max(xs) + 1, max(ys) + 1
 
-    for p in projection_data:
-        grid[p['y']][p['x']] += 1  # careful: y first, then x
+    # 2) count hits and collect (id, date) per cell
+    grid = [[0] * max_x for _ in range(max_y)]
+    cell_info = defaultdict(list)
+    for p in proj:
+        y, x = p['y'], p['x']
+        grid[y][x] += 1
+        cell_info[(y, x)].append((p['latent_point_id'], p['start_date']))
 
-    fig = go.Figure(
-        data=go.Heatmap(
-            z=grid,
-            colorscale='Viridis'
-        )
-    )
+    # 3) build hover‐text matrix
+    hovertext = []
+    for row in range(max_y):
+        ht_row = []
+        for col in range(max_x):
+            entries = cell_info.get((row, col), [])
+            if entries:
+                # e.g. "Count: 3<br>42 (2025-01-15)<br>63 (2025-02-01)<br>..." 
+                lines = [f"{pid} ({dt})" for pid, dt in entries]
+                ht = f"Count: {len(entries)}<br>" + "<br>".join(lines)
+            else:
+                ht = "No points"
+            ht_row.append(ht)
+        hovertext.append(ht_row)
+
+    # 4) render the heatmap with custom hover text
+    fig = go.Figure(go.Heatmap(
+        z=grid,
+        text=hovertext,
+        hoverinfo='text'     # show only our hover‐text
+    ))
     fig.update_layout(
         title="SOM Hit Map",
         xaxis_title="X",
         yaxis_title="Y",
-        yaxis_autorange='reversed'  # so (0,0) is top-left like usual SOMs
+        yaxis_autorange='reversed'
     )
     return fig

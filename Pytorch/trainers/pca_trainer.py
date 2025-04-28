@@ -1,65 +1,62 @@
-# Pytorch/trainers/pca_trainer.py
-
 import numpy as np
 from Backend.app import db
 from Backend.app.models.latent_models import LatentPoint, PCAProjectionConfig, PCAProjection
+from Backend.app.models.run_models import ModelRunConfig, ModelRun
 from Pytorch.projections.pca import fit_pca
 
-def run_pca_for_run(session, run_id, hyperparams):
+
+def run_pca_for_config(app, model_cfg_id, pca_cfg_id):
     """
-    Train PCA on latent vectors for a given model run,
-    persist the config and all component projections.
-
-    :param session: SQLAlchemy session
-    :param run_id:   ID of the ModelRun to process
-    :param hyperparams: dict containing PCA hyperparameters:
-                         - n_components (int)
-                         - additional_params (dict)
-    :returns: ID of the newly created PCAProjectionConfig
+    Background PCA trainer that loads parameters from the database via relationships,
+    fits PCA, stores both the projections and the explained_variance_ratio into the config.
     """
+    with app.app_context():
+        session = db.session
 
-    # 1) Fetch latent points
-    points = (session.query(LatentPoint)
-                     .filter_by(model_run_id=run_id)
-                     .order_by(LatentPoint.id)
-                     .all())
-    if not points:
-        raise ValueError(f"No LatentPoint entries found for run_id={run_id}")
+        # 1) Load the model config and its PCA sub-config
+        mcfg = session.get(ModelRunConfig, model_cfg_id)
+        if not mcfg:
+            raise ValueError(f"ModelRunConfig {model_cfg_id} not found")
+        pca_cfg = next((c for c in mcfg.pca_configs if c.id == pca_cfg_id), None)
+        if not pca_cfg:
+            raise ValueError(f"PCAProjectionConfig {pca_cfg_id} not valid for model_cfg {model_cfg_id}")
 
-    # 2) Build data matrix [n_samples, n_features]
-    Z = np.vstack([p.latent_vector for p in points])
+        # 2) Grab the one-to-one run and its latent points
+        run = mcfg.run
+        if not run or not run.latent_points:
+            raise RuntimeError(f"No ModelRun/LatentPoint for config {model_cfg_id}")
+        points = sorted(run.latent_points, key=lambda p: p.id)
 
-    # 3) Unpack PCA hyperparameters
-    n_components = hyperparams.get('n_components', min(Z.shape))
-    additional   = hyperparams.get('additional_params', {})
+        # 3) Build data matrix
+        Z = np.vstack([pt.latent_vector for pt in points])
 
-    # 4) Fit PCA
-    pca, X_reduced = fit_pca(Z, n_components, additional)
+        # 4) Unpack & normalize hyperparams
+        params = dict(pca_cfg.additional_params or {})
+        if 'solver' in params:
+            # scikit-learn expects 'svd_solver'
+            params['svd_solver'] = params.pop('solver')
+        n_comp = pca_cfg.n_components
 
-    # 5) Persist a new PCAProjectionConfig
-    pca_cfg = PCAProjectionConfig(
-        model_run_id      = run_id,
-        config_id         = session.query(db.func.max(PCAProjectionConfig.config_id)).scalar() or run_id,
-        n_components      = n_components,
-        additional_params = additional
-    )
-    session.add(pca_cfg)
-    session.flush()  # now pca_cfg.id is available
+        # 5) Fit PCA
+        pca_obj, X_reduced = fit_pca(Z, n_comp, params)
 
-    # 6) Bulk‐insert every projection row
-    projections = []
-    for idx, vec in enumerate(X_reduced):
-        for dim, val in enumerate(vec):
-            projections.append(
-                PCAProjection(
-                    latent_point_id = points[idx].id,
-                    config_id       = pca_cfg.id,
-                    dim             = dim,
-                    value           = float(val)
-                )
-            )
+        # 6) Persist explained variance ratio on the config
+        pca_cfg.explained_variance = pca_obj.explained_variance_ratio_.tolist()
+        pca_cfg.components         = pca_obj.components_.tolist()
+        session.add(pca_cfg)
+        session.flush()
 
-    session.add_all(projections)
-    session.commit()
+        # 7) Bulk-create projection rows
+        projections = []
+        for pt, vec in zip(points, X_reduced):
+            for dim, val in enumerate(vec):
+                projections.append(PCAProjection(
+                    latent_point_id=pt.id,
+                    config_id      =pca_cfg_id,
+                    dim            =dim,
+                    value          =float(val)
+                ))
+        session.bulk_save_objects(projections)
+        session.commit()
 
-    return pca_cfg.id
+    return pca_cfg_id

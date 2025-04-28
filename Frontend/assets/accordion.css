@@ -1,0 +1,41 @@
+/* assets/accordion.css */
+
+/* The overall panel */
+.chapter {
+    border: 1px solid #aaa;
+    border-radius: 6px;
+    margin-bottom: 16px;
+    background-color: #f9f9f9;
+    overflow: hidden;
+  }
+  
+  /* The clickable header */
+  .chapter > summary {
+    font-size: 1.25em;
+    font-weight: bold;
+    padding: 12px 16px;
+    background-color: #e2e2e2;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;          /* remove default marker */
+  }
+  
+  /* Hide the default triangle in Webkit */
+  .chapter > summary::-webkit-details-marker {
+    display: none;
+  }
+  
+  /* Change marker to ► when closed, ▼ when open */
+  .chapter > summary:before {
+    content: "► ";
+  }
+  .chapter[open] > summary:before {
+    content: "▼ ";
+  }
+  
+  /* The panel content */
+  .chapter > div {
+    padding: 16px;
+    border-top: 1px solid #ccc;
+  }
+  
