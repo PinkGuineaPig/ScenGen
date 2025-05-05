@@ -75,40 +75,45 @@ def _render_graphs(store):
 @callback(
     Output({'type': 'currency-plot', 'index': MATCH}, 'figure'),
     Input({'type': 'currency-plot', 'index': MATCH}, 'id'),
-    Input('currency-history-store', 'data'),
-    Input('selected-latent-store', 'data'),
-    State('currency-pair-store', 'data'),
+    Input('currency-history-store',     'data'),
+    Input('selected-latent-store',      'data'),
+    State('currency-pair-store',        'data'),
     State({'type': 'currency-plot', 'index': MATCH}, 'figure'),
+    prevent_initial_call=False
 )
 def _update_plot(graph_id, all_histories, selected_latents, pair_store, existing_fig):
     ctx = dash.callback_context
-    triggered = ctx.triggered[0]['prop_id'].split('.')[0]
-    pair = graph_id['index']
-    seq_len = pair_store.get('seq_len', 1) if isinstance(pair_store, dict) else 1
+    triggered = ctx.triggered and ctx.triggered[0]['prop_id'].split('.')[0]
+    pair     = graph_id['index']
+    seq_len  = (pair_store or {}).get('seq_len', 1)
 
-    print(f'pairs: {pair}, seq_len: {seq_len}')
-
-    # Helper to build base figure from stored history:
+    # build a fresh base figure + dataframe
     def build_base():
-        data = all_histories.get(pair, [])
-        df = pd.DataFrame(data)
-        df['date'] = pd.to_datetime(df['date'])
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=df['date'], y=df['rate'], mode='lines', name=pair))
+        hist = all_histories.get(pair, [])
+        df = pd.DataFrame(hist)
+        df['date'] = pd.to_datetime(df['date'], utc=True)
+        fig = go.Figure(
+            go.Scatter(x=df['date'], y=df['rate'], mode='lines', name=pair)
+        )
         return fig, df
 
-    # If we’re here because the user *selected* a SOM cell, just recolor:
+    # if we were triggered *only* by a latent‐selection change, just overlay
     if triggered == 'selected-latent-store' and existing_fig:
         fig = go.Figure(existing_fig)
-        # drop any old overlays (keep only the base trace at index 0)
+        # drop all but the base trace
         fig.data = [fig.data[0]]
-        df = pd.DataFrame(all_histories.get(pair, []))
-        df['date'] = pd.to_datetime(df['date'])
 
-        for sel in selected_latents or []:
-            start = pd.to_datetime(sel['start_date'])
-            end   = start + pd.Timedelta(days=seq_len - 1)
-            mask = (df['date'] >= start) & (df['date'] <= end)
+        # re-init df
+        df = pd.DataFrame(all_histories.get(pair, []))
+        df['date'] = pd.to_datetime(df['date'], utc=True)
+
+        # overlay each selected window in red
+        for sel in (selected_latents or []):
+            # new backend field name
+            start = pd.to_datetime(sel.get('start_timestamp'), utc=True)
+            # minute-based window
+            end   = start + pd.Timedelta(minutes=(seq_len - 1))
+            mask  = (df['date'] >= start) & (df['date'] <= end)
             if mask.any():
                 fig.add_trace(go.Scatter(
                     x=df.loc[mask, 'date'],
@@ -117,18 +122,21 @@ def _update_plot(graph_id, all_histories, selected_latents, pair_store, existing
                     line=dict(color='red', width=3),
                     showlegend=False
                 ))
+
         fig.update_layout(
             title=pair,
             margin={'l':20,'r':20,'t':30,'b':20},
-            xaxis_title='Date', yaxis_title='Exchange Rate'
+            xaxis_title='Date',
+            yaxis_title='Exchange Rate',
         )
         return fig
 
-    # Otherwise (initial mount or histories just arrived) – build fresh
-    fig, df = build_base()
+    # otherwise—initial mount or history store changed—build fresh
+    fig, _ = build_base()
     fig.update_layout(
         title=pair,
         margin={'l':20,'r':20,'t':30,'b':20},
-        xaxis_title='Date', yaxis_title='Exchange Rate'
+        xaxis_title='Date',
+        yaxis_title='Exchange Rate',
     )
     return fig

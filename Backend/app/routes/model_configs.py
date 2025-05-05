@@ -2,9 +2,11 @@ from flask import Blueprint, jsonify, request, current_app, abort
 from threading import Thread
 import requests
 
+import logging
+
 from Backend.app import db
 from Backend.app.models.run_models import ModelRunConfig, ModelRun
-from Pytorch.trainers.vae_trainer import train_vae_for_config
+from Pytorch.trainers.vae_trainer import train_vae_for_config, generate_and_bulk_save_latents
 
 # Blueprint mounted under /api by app factory
 model_configs_bp = Blueprint('model_configs', __name__, url_prefix='/model-configs')
@@ -73,16 +75,45 @@ def delete_model_config(config_id):
     db.session.commit()
     return '', 204
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s %(levelname)s:%(name)s:%(message)s')
+file_handler = logging.FileHandler('logs/model_configs.log')
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
+
 @model_configs_bp.route('/<int:config_id>/train', methods=['POST'])
 def trigger_training(config_id):
     """
-    Trigger VAE training for the given ModelRunConfig (async).
+    Trigger VAE training + latent generation for the given ModelRunConfig (sync).
     """
-    cfg = ModelRunConfig.query.get_or_404(config_id)
-    app = current_app._get_current_object()
-    Thread(
-        target=train_vae_for_config,
-        args=(app, config_id)
-    ).start()
-    return jsonify({'status': 'training started'}), 202
+    logger.info(f"Starting training for config {config_id}")
+    try:
+        # 1) Validate config
+        logger.info(f"Loading ModelRunConfig {config_id}...")
+        cfg = ModelRunConfig.query.get_or_404(config_id)
+        app = current_app._get_current_object()
+
+        # 2a) Train the model
+        logger.info("Calling train_vae_for_config...")
+        run_id = train_vae_for_config(app, config_id)
+        logger.info(f"Training completed, run_id: {run_id}")
+
+        # 2b) Generate & bulk-save latents
+        logger.info("Calling generate_and_bulk_save_latents...")
+        generate_and_bulk_save_latents(app, run_id)
+        logger.info(f"Latent generation completed for run {run_id}")
+
+        logger.info(f"Training and latent generation completed for config {config_id}")
+        return jsonify({"status": "completed", "run_id": run_id}), 200
+    except Exception as e:
+        logger.exception(f"Training or latent generation failed for config {config_id}: {str(e)}")
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# Other routes (e.g., create_config, get_losses) assumed unchanged
 

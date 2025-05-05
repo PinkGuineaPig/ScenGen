@@ -7,19 +7,30 @@ from datetime import datetime
 class LatentPoint(db.Model):
     __tablename__ = 'latent_point'
 
-    id            = db.Column(db.Integer, primary_key=True)
-    start_date    = db.Column(db.Date, nullable=False)
-    lag           = db.Column(db.Integer, nullable=False)
-    latent_vector = db.Column(db.ARRAY(db.Float), nullable=True)
-    model_run_id  = db.Column(
+    id              = db.Column(db.Integer, primary_key=True)
+    # Changed from Date to DateTime (UTC)
+    start_date      = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+        index=True
+    )
+    lag             = db.Column(db.Integer, nullable=False)
+    latent_vector   = db.Column(db.ARRAY(db.Float), nullable=True)
+    model_run_id    = db.Column(
         db.Integer,
         db.ForeignKey('model_run.id', ondelete='CASCADE'),
         nullable=False,
         index=True
-    )   
+    )
 
     __table_args__ = (
-        db.UniqueConstraint('model_run_id', 'start_date', 'lag', name='uq_latent_seq'),
+        db.UniqueConstraint(
+            'model_run_id',
+            'start_date',
+            'lag',
+            name='uq_latent_seq'
+        ),
     )
 
     run = db.relationship(
@@ -44,6 +55,10 @@ class LatentPoint(db.Model):
         back_populates='point',
         cascade='all, delete-orphan'
     )
+
+    def __repr__(self):
+        ts = self.start_date.isoformat() if self.start_date else None
+        return f"<LatentPoint id={self.id} start_date={ts} lag={self.lag}>"
 
     def get_pca_vector(self, config_id=None):
         projs = self.pca_projections

@@ -28,8 +28,6 @@ def list_pca_configs(model_cfg_id):
 
     # fetch and serialize
     configs = PCAProjectionConfig.query.filter_by(model_config_id=model_cfg_id).all()
-    print('list_pca_configs')
-    print(configs)
     return jsonify([c.to_dict() for c in configs]), 200
 
 @pca_bp.route('/<int:model_cfg_id>/pca-configs/<int:pca_cfg_id>', methods=['GET'])
