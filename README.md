@@ -6,36 +6,36 @@ The **ScenGen** repository contains a scenario generation and latent space analy
 ## Project Layout & Responsibilities
 
 ScenGen/
-├── .env.development       # Development environment variables (git-ignored)
-├── .env.test              # Testing environment variables
-├── .env.production        # Production environment variables
-├── .env.example           # Template listing required environment variables
-├── folder_structure.py    # Script documenting project layout (optional)
+├── .env.development      # Development environment variables (git-ignored)
+├── .env.test             # Testing environment variables
+├── .env.production       # Production environment variables
+├── .env.example          # Template listing required environment variables
+├── folder_structure.py   # Script documenting project layout (optional)
 ├── init_proj_structure.bat# Windows script to initialize project scaffolding
-├── pyproject.toml         # PEP 621 project metadata and build configuration
-├── requirements.txt       # Top-level Python dependencies
-├── README.md              # Project overview and quickstart guide
-├── .pytest_cache/         # pytest cache (auto-generated)
-├── Backend/               # Backend application (Flask/Dash + data models)
+├── pyproject.toml        # PEP 621 project metadata and build configuration
+├── requirements.txt      # Top-level Python dependencies
+├── README.md             # Project overview and quickstart guide
+├── .pytest_cache/        # pytest cache (auto-generated)
+├── Backend/              # Backend application (Flask/Dash + data models)
 │   ├── app/
-│   │   ├── __init__.py    # Application factory and extension initialization
-│   │   ├── models/        # SQLAlchemy model definitions
-│   │   ├── routes/        # HTTP and Dash route definitions
-│   │   └── utils/         # Reusable backend utilities and data loaders
-│   └── tests/             # Unit and integration tests for backend
-├── Frontend/              # Frontend application (React/Dash components and pages)
-│   ├── assets/            # Static assets (CSS, images)
-│   ├── components/        # Reusable UI components
-│   ├── pages/             # Page-level modules
-│   └── tests/             # Frontend unit tests
-├── Pytorch/               # PyTorch modeling and training code
-│   ├── models/            # Neural network definitions
-│   ├── trainers/          # Training loops and procedures
-│   └── tests/             # PyTorch-specific tests
-├── scripts/               # Standalone or scheduled jobs (ETL, data fetchers, migrations)
-└── Shared/                # Cross-cutting configuration and utility modules
-    ├── config/            # Configuration loaders (dotenv, database settings)
-    └── utils/             # Helper functions shared across Backend and Frontend
+│   │   ├── __init__.py   # Application factory and extension initialization
+│   │   ├── models/       # SQLAlchemy model definitions
+│   │   ├── routes/       # HTTP and Dash route definitions
+│   │   └── utils/        # Reusable backend utilities and data loaders
+│   └── tests/            # Unit and integration tests for backend
+├── Frontend/             # Frontend application (React/Dash components and pages)
+│   ├── assets/           # Static assets (CSS, images)
+│   ├── components/       # Reusable UI components
+│   ├── pages/            # Page-level modules
+│   └── tests/            # Frontend unit tests
+├── Pytorch/              # PyTorch modeling and training code
+│   ├── models/           # Neural network definitions
+│   ├── trainers/         # Training loops and procedures
+│   └── tests/            # PyTorch-specific tests
+├── scripts/              # Standalone or scheduled jobs (ETL, data fetchers, migrations)
+└── Shared/               # Cross-cutting configuration and utility modules
+    ├── config/           # Configuration loaders (dotenv, database settings)
+    └── utils/            # Helper functions shared across Backend and Frontend
 
 
 ## Folder Roles
