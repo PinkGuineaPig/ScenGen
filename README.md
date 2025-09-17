@@ -9,7 +9,7 @@ ScenGen/
 ├── .env.test             # Testing environment variables
 ├── .env.production       # Production environment variables
 ├── .env.example          # Template listing required environment variables
-├── folder_structure.py   # Script documenting project layout (optional)
+├── folder_structure.py   # Script documenting project layout
 ├── init_proj_structure.bat# Windows script to initialize project scaffolding
 ├── pyproject.toml        # PEP 621 project metadata and build configuration
 ├── requirements.txt      # Top-level Python dependencies
