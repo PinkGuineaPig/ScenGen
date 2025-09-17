@@ -35,7 +35,7 @@ ScenGen/
 └── Shared/               # Cross-cutting configuration and utility modules
     ├── config/           # Configuration loaders (dotenv, database settings)
     └── utils/            # Helper functions shared across Backend and Frontend
-
+````
 
 ## Folder Roles
 
