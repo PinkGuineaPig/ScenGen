@@ -112,10 +112,6 @@ python -m Backend.app.run
 
 8. **Start frontend application**
 
-# Depending on framework: e.g. `npm start` or `python Frontend/app.py`
-Run automated tests
-
-pytest
 
 
 
