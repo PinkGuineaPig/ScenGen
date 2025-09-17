@@ -3,8 +3,7 @@
 The **ScenGen** repository contains a scenario generation and latent space analysis application. Its components are organized to separate concerns, facilitate collaboration, and support testing, deployment, and extension.
 
 
-## Project Layout & Responsibilities
-
+```tree
 ScenGen/
 ├── .env.development      # Development environment variables (git-ignored)
 ├── .env.test             # Testing environment variables
